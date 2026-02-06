@@ -1,5 +1,6 @@
 const express = require("express");
 const Notification = require("../models/Notification");
+const { connectDB } = require("../config/db");
 
 const router = express.Router();
 
@@ -73,6 +74,8 @@ router.use(requireInternalKey);
  */
 router.get("/", async (req, res) => {
   try {
+    await connectDB();
+
     const address = normalizeAddress(req.query.address);
     const limitParam = Number.parseInt(String(req.query.limit || "20"), 10);
     const beforeParam = typeof req.query.before === "string" ? req.query.before : null;
@@ -119,6 +122,8 @@ router.get("/", async (req, res) => {
  */
 router.post("/payment", async (req, res) => {
   try {
+    await connectDB();
+
     const toAddress = normalizeAddress(req.body?.toAddress);
     const fromAddress = normalizeAddress(req.body?.fromAddress);
     const type = String(req.body?.type || "payment_received");
@@ -265,4 +270,3 @@ router.post("/:id/read", async (req, res) => {
 });
 
 module.exports = router;
-

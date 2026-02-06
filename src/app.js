@@ -30,12 +30,21 @@ app.use(
 );
 app.use(express.json());
 
-// Health endpoints: keep /health for local, and expose /api/health for serverless deployments.
-app.get(["/health", "/api/health"], (req, res) => {
+// Health endpoints.
+// Note: Vercel rewrites can preserve the original path, so support "/" directly too.
+app.get(["/", "/health", "/api/health"], (req, res) => {
   res.json({ ok: true, service: "dotpay-backend" });
 });
 
 app.use("/api/users", usersRouter);
 app.use("/api/notifications", notificationsRouter);
+
+// Last-resort error handler for unexpected exceptions.
+// (Most routes already handle their own errors.)
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  console.error("Unhandled error:", err);
+  res.status(500).json({ success: false, message: "Internal Server Error" });
+});
 
 module.exports = { app };

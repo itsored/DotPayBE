@@ -1,5 +1,6 @@
 const express = require("express");
 const User = require("../models/User");
+const { connectDB } = require("../config/db");
 
 const router = express.Router();
 const USERNAME_REGEX = /^[a-z0-9_]{3,20}$/;
@@ -65,6 +66,8 @@ function toResponse(user) {
  */
 router.post("/", async (req, res) => {
   try {
+    await connectDB();
+
     const { address, email, phone, userId, authMethod, createdAt, username } = req.body;
     const normalizedAddress = normalizeAddress(address);
     const normalizedUsername = normalizeUsername(username);
@@ -139,6 +142,8 @@ router.post("/", async (req, res) => {
  */
 router.patch("/:address/identity", async (req, res) => {
   try {
+    await connectDB();
+
     const normalizedAddress = normalizeAddress(req.params.address);
     const normalizedUsername = normalizeUsername(req.body?.username);
 
@@ -193,6 +198,8 @@ router.patch("/:address/identity", async (req, res) => {
  */
 router.get("/lookup", async (req, res) => {
   try {
+    await connectDB();
+
     const qRaw = typeof req.query.q === "string" ? req.query.q : typeof req.query.query === "string" ? req.query.query : "";
     const q = (qRaw || "").trim();
     if (!q) {
@@ -270,6 +277,8 @@ router.get("/lookup", async (req, res) => {
  */
 router.get("/:address", async (req, res) => {
   try {
+    await connectDB();
+
     const address = normalizeAddress(req.params.address);
     if (!address) {
       return res.status(400).json({ success: false, message: "address is required" });
