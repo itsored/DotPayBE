@@ -13,8 +13,11 @@ async function test() {
   console.log("Testing DotPay API at", BASE, "\n");
 
   // 1. Health
-  console.log("1. GET /health");
-  const healthRes = await fetch(`${BASE}/health`);
+  console.log("1. GET /health (or /api/health on serverless)");
+  let healthRes = await fetch(`${BASE}/health`);
+  if (!healthRes.ok) {
+    healthRes = await fetch(`${BASE}/api/health`);
+  }
   const health = await healthRes.json();
   if (!health.ok) {
     throw new Error("Health check failed: " + JSON.stringify(health));

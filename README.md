@@ -7,7 +7,7 @@ Express.js backend for DotPay. Starting point for user storage and APIs.
 1. **Install dependencies**
 
    ```bash
-   cd backend && npm install
+   npm install
    ```
 
 2. **Environment**
@@ -39,6 +39,7 @@ Express.js backend for DotPay. Starting point for user storage and APIs.
 ### Health
 
 - **GET** `/health` – `{ ok: true, service: "dotpay-backend" }`
+- **GET** `/api/health` – same response (useful for serverless deployments)
 
 ### Users
 
@@ -77,7 +78,7 @@ Express.js backend for DotPay. Starting point for user storage and APIs.
 
 ## Frontend integration
 
-1. **Backend must be running** (e.g. `npm run dev` in `backend/`).
+1. **Backend must be running** (e.g. `npm run dev`).
 2. In the **Next.js app** `.env`, set:
    ```bash
    NEXT_PUBLIC_DOTPAY_API_URL=http://localhost:4000
@@ -121,3 +122,19 @@ mongodb+srv://...@cluster0.v4yk9ay.mongodb.net/dotpay?appName=Cluster0
 
 - Add authentication (e.g. verify thirdweb JWT or API key) before accepting `POST /api/users`.
 - Add more collections and routes (wallets, transactions, etc.).
+
+## Deploy to Vercel
+
+This repo is set up to deploy on Vercel as serverless functions.
+
+1. Push this repo to GitHub.
+2. In Vercel: **Add New Project** -> import the GitHub repo.
+3. Add these **Environment Variables** in Vercel (Production + Preview if you use preview deployments):
+   - `MONGODB_URI` (required)
+   - `CLIENT_ORIGIN` (recommended, used for CORS in production)
+   - `DOTPAY_INTERNAL_API_KEY` (required for `/api/notifications/*`)
+4. Deploy.
+
+Notes:
+- API endpoints remain at `/api/*` (e.g. `/api/users`).
+- `/health` is rewritten to `/api/health` via `vercel.json`.
