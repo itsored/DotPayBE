@@ -70,6 +70,7 @@ function mapTransaction(tx) {
       responseCode: tx.daraja?.responseCode || null,
       responseDescription: tx.daraja?.responseDescription || null,
       resultCode: tx.daraja?.resultCode ?? null,
+      resultCodeRaw: tx.daraja?.resultCodeRaw || null,
       resultDesc: tx.daraja?.resultDesc || null,
       receiptNumber: tx.daraja?.receiptNumber || null,
       customerMessage: tx.daraja?.customerMessage || null,
