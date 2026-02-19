@@ -12,6 +12,7 @@ const {
 const RECEIPT_REGEX = /^[A-Z0-9]{10}$/i;
 const DIGITS_REGEX = /^[0-9]+$/;
 const DEFAULT_KES_PER_USD = Number.parseFloat(process.env.KES_PER_USD || "130");
+const DEFAULT_B2C_COMMAND_ID = String(process.env.MPESA_B2C_COMMAND_ID || "").trim();
 
 function nowIso() {
   return new Date().toISOString();
@@ -191,7 +192,7 @@ async function handleB2C({ req, res, product }) {
       phoneNumber,
       remarks: req.body?.description || req.body?.remarks || "DotPay withdrawal",
       occasion: req.body?.occasion || "DotPay",
-      commandId: req.body?.commandId || "BusinessPayment",
+      commandId: req.body?.commandId || DEFAULT_B2C_COMMAND_ID || "BusinessPayment",
     });
     const response = result?.response || {};
     const responseCode = String(response?.ResponseCode || "");
@@ -334,8 +335,11 @@ async function buyCrypto(req, res) {
 }
 
 async function payPaybill(req, res) {
-  const targetNumber = req.body?.businessNumber || req.body?.paybillNumber;
+  const targetNumber = req.body?.businessNumber || req.body?.paybillNumber || req.body?.targetNumber;
   const accountNumber = req.body?.accountNumber ? String(req.body.accountNumber).trim() : "";
+  if (!targetNumber) {
+    return fail(res, 400, "paybillNumber or businessNumber is required for paybill.");
+  }
   if (!accountNumber) {
     return fail(res, 400, "accountNumber is required for paybill.");
   }
@@ -351,12 +355,16 @@ async function payPaybill(req, res) {
 }
 
 async function payTill(req, res) {
+  const targetNumber = req.body?.tillNumber || req.body?.targetNumber || req.body?.businessNumber;
+  if (!targetNumber) {
+    return fail(res, 400, "tillNumber is required for till payment.");
+  }
   return handleB2B({
     req,
     res,
     product: "till",
     commandId: "BusinessBuyGoods",
-    targetNumber: req.body?.tillNumber,
+    targetNumber,
     accountNumber: req.body?.accountNumber || "DotPay",
     remarks: req.body?.description || "DotPay till settlement",
   });
@@ -364,7 +372,8 @@ async function payTill(req, res) {
 
 async function payWithCrypto(req, res) {
   const targetType = String(req.body?.targetType || "").trim().toLowerCase();
-  const targetNumber = req.body?.targetNumber;
+  const targetNumber =
+    req.body?.targetNumber || req.body?.businessNumber || req.body?.paybillNumber || req.body?.tillNumber;
   const accountNumber = req.body?.accountNumber ? String(req.body.accountNumber).trim() : "";
 
   if (!["paybill", "till"].includes(targetType)) {
@@ -461,4 +470,3 @@ module.exports = {
   submitReceipt,
   getTransactionStatus,
 };
-

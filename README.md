@@ -116,7 +116,7 @@ Use an env var (e.g. `NEXT_PUBLIC_DOTPAY_API_URL`) for the backend URL in produc
 Uses MongoDB Atlas. The `User` model is stored in the default database; you can add a database name to the URI if needed:
 
 ```
-mongodb+srv://...@cluster0.v4yk9ay.mongodb.net/dotpay?appName=Cluster0
+mongodb+srv://<username>:<password>@<cluster-host>/<database>?appName=<app-name>
 ```
 
 ## Next steps

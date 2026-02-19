@@ -31,44 +31,52 @@ function getMpesaConfig() {
     (isSandbox ? "https://sandbox.safaricom.co.ke" : "https://api.safaricom.co.ke");
 
   const consumerKey = getEnvValue(
-    "MPESA_CONSUMER_KEY",
     isSandbox ? "MPESA_DEV_CONSUMER_KEY" : "MPESA_PROD_CONSUMER_KEY",
+    "MPESA_CONSUMER_KEY",
     "MPESA_DEV_CONSUMER_KEY",
     "MPESA_PROD_CONSUMER_KEY"
   );
   const consumerSecret = getEnvValue(
-    "MPESA_CONSUMER_SECRET",
     isSandbox ? "MPESA_DEV_CONSUMER_SECRET" : "MPESA_PROD_CONSUMER_SECRET",
+    "MPESA_CONSUMER_SECRET",
     "MPESA_DEV_CONSUMER_SECRET",
     "MPESA_PROD_CONSUMER_SECRET"
   );
   const shortcode = getEnvValue(
-    "MPESA_SHORTCODE",
     isSandbox ? "MPESA_DEV_SHORTCODE" : "MPESA_PROD_SHORTCODE",
+    "MPESA_SHORTCODE",
     "MPESA_DEV_SHORTCODE",
     "MPESA_PROD_SHORTCODE"
   );
   const passkey = getEnvValue(
-    "MPESA_PASSKEY",
     isSandbox ? "MPESA_DEV_PASSKEY" : "MPESA_PROD_PASSKEY",
+    "MPESA_PASSKEY",
     "MPESA_DEV_PASSKEY",
     "MPESA_PROD_PASSKEY"
   );
   const initiatorName = getEnvValue(
-    "MPESA_INITIATOR_NAME",
     isSandbox ? "MPESA_DEV_INITIATOR_NAME" : "MPESA_PROD_INITIATOR_NAME",
+    "MPESA_INITIATOR_NAME",
     "MPESA_DEV_INITIATOR_NAME",
     "MPESA_PROD_INITIATOR_NAME"
   );
   const securityCredential = getEnvValue(
-    "MPESA_SECURITY_CREDENTIAL",
     isSandbox ? "MPESA_DEV_SECURITY_CREDENTIAL" : "MPESA_PROD_SECURITY_CREDENTIAL",
+    "MPESA_SECURITY_CREDENTIAL",
     "MPESA_DEV_SECURITY_CREDENTIAL",
     "MPESA_PROD_SECURITY_CREDENTIAL"
   );
 
-  const b2cShortcode = getEnvValue("MPESA_B2C_SHORTCODE") || shortcode;
-  const b2bShortcode = getEnvValue("MPESA_B2B_SHORTCODE") || shortcode;
+  const b2cShortcode =
+    getEnvValue(
+      isSandbox ? "MPESA_DEV_B2C_SHORTCODE" : "MPESA_PROD_B2C_SHORTCODE",
+      "MPESA_B2C_SHORTCODE"
+    ) || shortcode;
+  const b2bShortcode =
+    getEnvValue(
+      isSandbox ? "MPESA_DEV_B2B_SHORTCODE" : "MPESA_PROD_B2B_SHORTCODE",
+      "MPESA_B2B_SHORTCODE"
+    ) || shortcode;
   const webhookBase = getEnvValue("MPESA_WEBHOOK_URL");
   const callbackToken = getEnvValue("MPESA_CALLBACK_TOKEN");
 

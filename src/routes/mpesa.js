@@ -87,6 +87,15 @@ router.post("/pay/till", requireClientAuth, enforceRateLimit, payTill);
 router.post("/pay-with-crypto", requireClientAuth, enforceRateLimit, payWithCrypto);
 router.post("/withdraw", requireClientAuth, enforceRateLimit, withdraw);
 router.post("/crypto-to-mpesa", requireClientAuth, enforceRateLimit, cryptoToMpesa);
+
+// Test-friendly aliases for onramp/offramp flows.
+router.post("/onramp/deposit", requireClientAuth, enforceRateLimit, deposit);
+router.post("/onramp/buy-crypto", requireClientAuth, enforceRateLimit, buyCrypto);
+router.post("/offramp/withdraw", requireClientAuth, enforceRateLimit, withdraw);
+router.post("/offramp/crypto-to-mpesa", requireClientAuth, enforceRateLimit, cryptoToMpesa);
+router.post("/offramp/paybill", requireClientAuth, enforceRateLimit, payPaybill);
+router.post("/offramp/till", requireClientAuth, enforceRateLimit, payTill);
+
 router.post("/submit-receipt", requireClientAuth, submitReceipt);
 router.get("/transaction/:transactionId", requireClientAuth, getTransactionStatus);
 
@@ -96,4 +105,3 @@ router.post("/b2b-callback", b2bCallback);
 router.post("/queue-timeout", queueTimeoutCallback);
 
 module.exports = router;
-
