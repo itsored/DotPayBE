@@ -1,11 +1,14 @@
 const express = require("express");
 const User = require("../models/User");
 const { connectDB } = require("../config/db");
+const { requireBackendAuth } = require("../middleware/requireBackendAuth");
+const { assertPinFormat, hashPin, verifyPin } = require("../services/security/pin");
 
 const router = express.Router();
 const USERNAME_REGEX = /^[a-z0-9_]{3,20}$/;
 const DOTPAY_ID_PREFIX_REGEX = /^dp/i;
 const ETH_ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
+const APP_PIN_LENGTH = 6;
 
 function normalizeEmail(value) {
   if (typeof value !== "string") return "";
@@ -16,6 +19,41 @@ function normalizePhone(value) {
   if (typeof value !== "string") return "";
   // Keep "+" if present, strip common separators/spaces.
   return value.trim().replace(/[\s()-]/g, "");
+}
+
+function expandPhoneLookups(raw) {
+  const normalized = normalizePhone(raw);
+  const digits = normalized.replace(/[^0-9]/g, "");
+  const variants = new Set();
+
+  if (!digits) return [];
+
+  variants.add(normalized);
+  variants.add(digits);
+  if (!normalized.startsWith("+")) variants.add(`+${digits}`);
+
+  // Kenya-specific normalizations:
+  // - 0712345678 -> 254712345678 / +254712345678
+  // - 712345678  -> 254712345678 / +254712345678
+  // - 254712345678 -> +254712345678
+  let ke = null;
+  if (digits.startsWith("254") && digits.length === 12) {
+    ke = digits;
+  } else if ((digits.startsWith("07") || digits.startsWith("01")) && digits.length === 10) {
+    ke = `254${digits.slice(1)}`;
+  } else if ((digits.startsWith("7") || digits.startsWith("1")) && digits.length === 9) {
+    ke = `254${digits}`;
+  }
+
+  if (ke) {
+    variants.add(ke);
+    variants.add(`+${ke}`);
+  }
+
+  return Array.from(variants)
+    .map((v) => String(v || "").trim())
+    .filter(Boolean)
+    .map((v) => ({ phone: v }));
 }
 
 function normalizeAddress(value) {
@@ -54,9 +92,20 @@ function toResponse(user) {
     dotpayId: user.dotpayId,
     authMethod: user.authMethod,
     thirdwebCreatedAt: user.thirdwebCreatedAt,
+    pinSet: Boolean(user.pinHash),
+    pinUpdatedAt: user.pinUpdatedAt,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };
+}
+
+function requireSelfAddress(req, res, normalizedAddress) {
+  const tokenAddress = normalizeAddress(req.backendAuth?.address || "");
+  if (!tokenAddress || tokenAddress !== normalizedAddress) {
+    res.status(401).json({ success: false, message: "Unauthorized." });
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -100,16 +149,20 @@ router.post("/", async (req, res) => {
     let user = await User.findOne({ address: normalizedAddress });
 
     if (!user) {
-      user = new User({
+      const userData = {
         address: normalizedAddress,
         email: email ?? null,
         phone: normalizedPhone ?? null,
         thirdwebUserId: userId ?? null,
         authMethod: authMethod ?? null,
         thirdwebCreatedAt: createdAt ? new Date(createdAt) : null,
-        username: normalizedUsername || null,
         dotpayId: await generateUniqueDotpayId(),
-      });
+      };
+      // IMPORTANT: do not persist `username: null`. With a unique sparse index on `username`,
+      // multiple `null` values would trigger duplicate key errors and block new signups.
+      if (normalizedUsername) userData.username = normalizedUsername;
+
+      user = new User(userData);
     } else {
       if (email !== undefined) user.email = email ?? null;
       if (phone !== undefined) user.phone = normalizedPhone ?? null;
@@ -132,6 +185,146 @@ router.post("/", async (req, res) => {
       success: false,
       message: err.message || "Failed to save user",
     });
+  }
+});
+
+/**
+ * GET /api/users/:address/pin
+ * Check whether the app PIN is set for the authenticated user.
+ */
+router.get("/:address/pin", requireBackendAuth, async (req, res) => {
+  try {
+    await connectDB();
+
+    const normalizedAddress = normalizeAddress(req.params.address);
+    if (!normalizedAddress) {
+      return res.status(400).json({ success: false, message: "address is required" });
+    }
+    if (!requireSelfAddress(req, res, normalizedAddress)) return;
+
+    const user = await User.findOne({ address: normalizedAddress });
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        address: user.address,
+        pinSet: Boolean(user.pinHash),
+        pinUpdatedAt: user.pinUpdatedAt,
+      },
+    });
+  } catch (err) {
+    console.error("GET /api/users/:address/pin error:", err);
+    return res.status(500).json({ success: false, message: err.message || "Failed to load PIN status" });
+  }
+});
+
+/**
+ * PATCH /api/users/:address/pin
+ * Set (or update) the 6-digit app PIN for the authenticated user.
+ *
+ * Body:
+ * - { pin } to set for the first time
+ * - { pin, oldPin } to update an existing PIN
+ */
+router.patch("/:address/pin", requireBackendAuth, async (req, res) => {
+  try {
+    await connectDB();
+
+    const normalizedAddress = normalizeAddress(req.params.address);
+    if (!normalizedAddress) {
+      return res.status(400).json({ success: false, message: "address is required" });
+    }
+    if (!requireSelfAddress(req, res, normalizedAddress)) return;
+
+    const pin = assertPinFormat(req.body?.pin, APP_PIN_LENGTH);
+
+    let user = await User.findOne({ address: normalizedAddress });
+
+    // Should exist already (synced after thirdweb sign-in), but create defensively.
+    if (!user) {
+      user = new User({
+        address: normalizedAddress,
+        dotpayId: await generateUniqueDotpayId(),
+      });
+    }
+
+    if (user.pinHash) {
+      const oldPinRaw = req.body?.oldPin;
+      if (!oldPinRaw) {
+        return res.status(400).json({
+          success: false,
+          message: "oldPin is required to update your PIN.",
+        });
+      }
+      const oldPin = assertPinFormat(oldPinRaw, APP_PIN_LENGTH);
+      if (!verifyPin(oldPin, user.pinHash, { length: APP_PIN_LENGTH })) {
+        return res.status(401).json({ success: false, message: "Invalid PIN." });
+      }
+    }
+
+    user.pinHash = hashPin(pin, { length: APP_PIN_LENGTH });
+    user.pinUpdatedAt = new Date();
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        address: user.address,
+        pinSet: true,
+        pinUpdatedAt: user.pinUpdatedAt,
+      },
+    });
+  } catch (err) {
+    console.error("PATCH /api/users/:address/pin error:", err);
+    return res.status(500).json({ success: false, message: err.message || "Failed to set PIN" });
+  }
+});
+
+/**
+ * POST /api/users/:address/pin/verify
+ * Verify a 6-digit app PIN for the authenticated user.
+ *
+ * Body: { pin }
+ */
+router.post("/:address/pin/verify", requireBackendAuth, async (req, res) => {
+  try {
+    await connectDB();
+
+    const normalizedAddress = normalizeAddress(req.params.address);
+    if (!normalizedAddress) {
+      return res.status(400).json({ success: false, message: "address is required" });
+    }
+    if (!requireSelfAddress(req, res, normalizedAddress)) return;
+
+    const pin = assertPinFormat(req.body?.pin, APP_PIN_LENGTH);
+
+    const user = await User.findOne({ address: normalizedAddress });
+    if (!user || !user.pinHash) {
+      return res.status(400).json({
+        success: false,
+        message: "Security PIN is not set. Please set a 6-digit app PIN to continue.",
+      });
+    }
+
+    const ok = verifyPin(pin, user.pinHash, { length: APP_PIN_LENGTH });
+    if (!ok) {
+      return res.status(401).json({ success: false, message: "Invalid PIN." });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        address: user.address,
+        valid: true,
+        pinUpdatedAt: user.pinUpdatedAt,
+      },
+    });
+  } catch (err) {
+    console.error("POST /api/users/:address/pin/verify error:", err);
+    return res.status(500).json({ success: false, message: err.message || "Failed to verify PIN" });
   }
 });
 
@@ -237,9 +430,7 @@ router.get("/lookup", async (req, res) => {
 
     // Phone (store format can vary; try a few common normalizations)
     if (phoneDigits.length >= 7) {
-      lookups.push({ phone: normalizedPhone });
-      if (normalizedPhone !== phoneDigits) lookups.push({ phone: phoneDigits });
-      if (!normalizedPhone.startsWith("+")) lookups.push({ phone: `+${phoneDigits}` });
+      lookups.push(...expandPhoneLookups(q));
     }
 
     if (lookups.length === 0) {

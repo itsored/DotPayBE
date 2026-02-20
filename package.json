@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
+    "test": "node --test test/**/*.test.js",
     "test:api": "node scripts/test-api.js"
   },
   "engines": {
@@ -14,6 +15,7 @@
   "dependencies": {
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
+    "ethers": "^6.15.0",
     "express": "^4.21.0",
     "mongoose": "^8.3.3"
   }

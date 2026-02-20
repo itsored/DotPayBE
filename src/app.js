@@ -6,7 +6,7 @@ const cors = require("cors");
 const usersRouter = require("./routes/users");
 const notificationsRouter = require("./routes/notifications");
 const mpesaRouter = require("./routes/mpesa");
-const usdcRouter = require("./routes/usdc");
+const mpesaWebhooksRouter = require("./routes/mpesa-webhooks");
 
 const normalizeOrigin = (value) => String(value || "").trim().replace(/\/+$/, "");
 
@@ -80,8 +80,8 @@ app.get(["/", "/health", "/api/health"], (req, res) => {
 
 app.use("/api/users", usersRouter);
 app.use("/api/notifications", notificationsRouter);
+app.use("/api/mpesa", mpesaWebhooksRouter);
 app.use("/api/mpesa", mpesaRouter);
-app.use("/api/usdc", usdcRouter);
 
 // Last-resort error handler for unexpected exceptions.
 // (Most routes already handle their own errors.)

@@ -19,7 +19,6 @@ const userSchema = new mongoose.Schema(
     /** Public username chosen by the user during onboarding. */
     username: {
       type: String,
-      default: null,
       trim: true,
       lowercase: true,
       minlength: 3,
@@ -41,6 +40,13 @@ const userSchema = new mongoose.Schema(
     },
     /** When the thirdweb user was created (in-app). */
     thirdwebCreatedAt: { type: Date, default: null },
+
+    /**
+     * Hashed 6-digit app PIN.
+     * Format: scrypt$<salt_b64>$<hash_b64>
+     */
+    pinHash: { type: String, default: null, trim: true },
+    pinUpdatedAt: { type: Date, default: null },
   },
   {
     timestamps: true,

@@ -1,4 +1,8 @@
 node_modules/
 .env
 *.log
+.local-tunnel.pid
+.local-tunnel.log
+.localhostrun-tunnel.pid
+.localhostrun-tunnel.log
 .DS_Store
