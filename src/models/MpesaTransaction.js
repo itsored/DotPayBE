@@ -87,6 +87,7 @@ const mpesaTransactionSchema = new mongoose.Schema(
       signature: { type: String, default: null, trim: true },
       signedAt: { type: Date, default: null },
       nonce: { type: String, default: null, trim: true },
+      signerAddress: { type: String, default: null, trim: true, lowercase: true },
     },
     onchain: {
       txHash: { type: String, default: null, trim: true, lowercase: true },

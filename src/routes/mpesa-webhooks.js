@@ -5,6 +5,7 @@ const { MpesaTransaction } = require("../models/MpesaTransaction");
 const { MpesaEvent } = require("../models/MpesaEvent");
 const { assertTransition } = require("../services/mpesa/stateMachine");
 const { scheduleAutoRefund } = require("../services/mpesa/refundService");
+const { settleOnrampCredit } = require("../services/settlement/creditOnramp");
 
 const router = express.Router();
 
@@ -70,6 +71,9 @@ async function findTransactionFromWebhook(req, fallbackFields = {}) {
 
   if (fallbackFields.checkoutRequestId) {
     query.$or.push({ "daraja.checkoutRequestId": String(fallbackFields.checkoutRequestId) });
+  }
+  if (fallbackFields.merchantRequestId) {
+    query.$or.push({ "daraja.merchantRequestId": String(fallbackFields.merchantRequestId) });
   }
   if (fallbackFields.conversationId) {
     query.$or.push({ "daraja.conversationId": String(fallbackFields.conversationId) });
@@ -142,6 +146,35 @@ router.post("/webhooks/stk", async (req, res) => {
     };
 
     if (parsedCode.isSuccess) {
+      // For topups, STK success must be followed by treasury -> user USDC credit.
+      // Keep the callback fast: persist callback state, ack, then settle asynchronously.
+      if (tx.flowType === "onramp") {
+        if (tx.status === "mpesa_submitted") {
+          assertTransition(tx, "mpesa_processing", "STK callback success", "webhook");
+        }
+        await tx.save();
+
+        setImmediate(async () => {
+          try {
+            const latest = await MpesaTransaction.findOne({
+              transactionId: tx.transactionId,
+            });
+            if (!latest) return;
+            const settled = await settleOnrampCredit(latest, { source: "webhook" });
+            if (!settled.credited && settled.reason !== "already_credited") {
+              console.error(
+                `Onramp credit failed for ${tx.transactionId}:`,
+                settled.error || settled.reason
+              );
+            }
+          } catch (err) {
+            console.error(`Onramp credit crash for ${tx.transactionId}:`, err);
+          }
+        });
+
+        return callbackAck(res);
+      }
+
       if (tx.status !== "succeeded") {
         assertTransition(tx, "succeeded", "STK callback success", "webhook");
       }

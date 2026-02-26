@@ -21,7 +21,9 @@ test("buildQuote computes expected KES quote fields", () => {
   assert.equal(quote.amountRequested, 1000);
   assert.equal(quote.amountKes, 1000);
   assert.equal(quote.expectedReceiveKes, 1000);
-  assert.ok(quote.feeAmountKes >= 5);
+  assert.equal(quote.feeAmountKes, 0);
+  assert.equal(quote.networkFeeKes, 0);
+  assert.equal(quote.totalDebitKes, quote.amountKes);
   assert.ok(quote.expiresAt);
   assert.ok(quote.snapshotAt);
 
@@ -45,6 +47,7 @@ test("buildQuote handles USD input and explicit rate", () => {
   assert.equal(quote.amountUsd, 10);
   assert.equal(quote.amountKes, 1550);
   assert.equal(quote.rateKesPerUsd, 155);
-  assert.ok(quote.totalDebitKes > quote.amountKes);
+  assert.equal(quote.feeAmountKes, 0);
+  assert.equal(quote.networkFeeKes, 0);
+  assert.equal(quote.totalDebitKes, quote.amountKes);
 });
-

@@ -2,10 +2,10 @@ const crypto = require("crypto");
 const { mpesaConfig } = require("../../config/mpesa");
 
 const FEE_BPS_BY_FLOW = {
-  onramp: 130,
-  offramp: 180,
-  paybill: 120,
-  buygoods: 120,
+  onramp: 0,
+  offramp: 0,
+  paybill: 0,
+  buygoods: 0,
 };
 
 function round2(value) {
@@ -48,9 +48,9 @@ function buildQuote({ flowType, amount, currency = "KES", kesPerUsd }) {
       ? amountRequested
       : round2(amountRequested / rateKesPerUsd);
 
-  const feeBps = FEE_BPS_BY_FLOW[flowType] ?? 150;
-  const feeAmountKes = round2(Math.max(5, (amountKes * feeBps) / 10000));
-  const networkFeeKes = round2(flowType === "onramp" ? 0 : 3);
+  const feeBps = FEE_BPS_BY_FLOW[flowType] ?? 0;
+  const feeAmountKes = round2((amountKes * feeBps) / 10000);
+  const networkFeeKes = 0;
   const totalDebitKes = round2(amountKes + feeAmountKes + networkFeeKes);
   const expectedReceiveKes = round2(amountKes);
 

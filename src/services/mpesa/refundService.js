@@ -30,6 +30,29 @@ function hasTreasuryConfig() {
   return Boolean(treasury.rpcUrl && treasury.privateKey && treasury.usdcContract);
 }
 
+function getRefundRecipient(transaction) {
+  const fromAddress = String(transaction?.onchain?.fromAddress || "")
+    .trim()
+    .toLowerCase();
+  if (/^0x[a-f0-9]{40}$/.test(fromAddress)) {
+    return fromAddress;
+  }
+
+  const signerAddress = String(transaction?.authorization?.signerAddress || "")
+    .trim()
+    .toLowerCase();
+  if (/^0x[a-f0-9]{40}$/.test(signerAddress)) {
+    return signerAddress;
+  }
+
+  const userAddress = String(transaction?.userAddress || "").trim().toLowerCase();
+  if (/^0x[a-f0-9]{40}$/.test(userAddress)) {
+    return userAddress;
+  }
+
+  return "";
+}
+
 async function executeOnchainRefund(transaction) {
   const treasury = mpesaConfig.treasury || {};
   if (!treasury.refundEnabled) {
@@ -42,7 +65,7 @@ async function executeOnchainRefund(transaction) {
     );
   }
 
-  const recipient = String(transaction?.userAddress || "").trim().toLowerCase();
+  const recipient = getRefundRecipient(transaction);
   if (!/^0x[a-f0-9]{40}$/.test(recipient)) {
     throw new Error("Refund recipient address is invalid.");
   }
