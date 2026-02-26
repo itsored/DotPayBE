@@ -20,8 +20,42 @@ function normalizeUrl(value) {
   return String(value || "").trim().replace(/\/+$/, "");
 }
 
+const LIKELY_RSA_CIPHERTEXT_BYTE_LENGTHS = new Set([128, 192, 256, 384, 512]);
+
+function decodedBase64ByteLength(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return 0;
+  const normalized = raw.replace(/\s+/g, "");
+  if (!/^[A-Za-z0-9+/=]+$/.test(normalized)) return -1;
+  try {
+    return Buffer.from(normalized, "base64").length;
+  } catch {
+    return -1;
+  }
+}
+
+function looksLikeRsaSecurityCredential(value) {
+  const decodedLength = decodedBase64ByteLength(value);
+  return LIKELY_RSA_CIPHERTEXT_BYTE_LENGTHS.has(decodedLength);
+}
+
 const envRaw = String(process.env.MPESA_ENV || "").trim().toLowerCase();
 const env = envRaw === "production" ? "production" : "sandbox";
+
+function readEnvRaw(name) {
+  return String(process.env[name] || "").trim();
+}
+
+// In production mode, allow a separate credential namespace:
+// MPESA_PROD_*. Falls back to MPESA_* for backward compatibility.
+function readMpesaValue(suffix, { allowLegacyFallback = true } = {}) {
+  if (env === "production") {
+    const prodValue = readEnvRaw(`MPESA_PROD_${suffix}`);
+    if (prodValue) return prodValue;
+    if (!allowLegacyFallback) return "";
+  }
+  return readEnvRaw(`MPESA_${suffix}`);
+}
 
 function defaultCertPathForEnv(targetEnv) {
   // Only sandbox cert is bundled; production should be supplied via MPESA_CERT_PATH.
@@ -36,10 +70,12 @@ const baseUrl =
 const resultBaseUrl = normalizeUrl(process.env.MPESA_RESULT_BASE_URL || process.env.NEXT_PUBLIC_DOTPAY_API_URL);
 const timeoutBaseUrl = normalizeUrl(process.env.MPESA_TIMEOUT_BASE_URL || process.env.NEXT_PUBLIC_DOTPAY_API_URL);
 
-let securityCredential = String(process.env.MPESA_SECURITY_CREDENTIAL || "").trim();
+// Resolve the environment-scoped security credential first.
+// In production mode, this prefers MPESA_PROD_SECURITY_CREDENTIAL and only falls back to MPESA_SECURITY_CREDENTIAL.
+let securityCredential = readMpesaValue("SECURITY_CREDENTIAL");
 if (!securityCredential) {
-  const initiatorPassword = String(process.env.MPESA_INITIATOR_PASSWORD || "").trim();
-  const certPath = String(process.env.MPESA_CERT_PATH || "").trim() || defaultCertPathForEnv(env);
+  const initiatorPassword = readMpesaValue("INITIATOR_PASSWORD");
+  const certPath = readMpesaValue("CERT_PATH") || defaultCertPathForEnv(env);
   if (initiatorPassword && certPath && fs.existsSync(certPath)) {
     try {
       securityCredential = generateSecurityCredentialFromCertPath({ initiatorPassword, certPath });
@@ -66,6 +102,9 @@ const treasuryPrivateKey = String(process.env.TREASURY_PRIVATE_KEY || "").trim()
 const treasuryAddress =
   String(process.env.TREASURY_PLATFORM_ADDRESS || "").trim() ||
   deriveTreasuryAddressFromPrivateKey(treasuryPrivateKey);
+const b2cApiVersion = String(readMpesaValue("B2C_API_VERSION", { allowLegacyFallback: false }) || "v3")
+  .trim()
+  .toLowerCase();
 
 const mpesaConfig = {
   enabled: toBool(process.env.MPESA_ENABLED, false),
@@ -76,72 +115,60 @@ const mpesaConfig = {
     stkPush: `${baseUrl}/mpesa/stkpush/v1/processrequest`,
     stkQuery: `${baseUrl}/mpesa/stkpushquery/v1/query`,
     b2cPayment:
-      String(process.env.MPESA_B2C_API_VERSION || "")
-        .trim()
-        .toLowerCase() === "v1"
+      b2cApiVersion === "v1"
         ? `${baseUrl}/mpesa/b2c/v1/paymentrequest`
         : `${baseUrl}/mpesa/b2c/v3/paymentrequest`,
     b2bPayment: `${baseUrl}/mpesa/b2b/v1/paymentrequest`,
     transactionStatus: `${baseUrl}/mpesa/transactionstatus/v1/query`,
   },
   credentials: {
-    consumerKey: String(process.env.MPESA_CONSUMER_KEY || "").trim(),
-    consumerSecret: String(process.env.MPESA_CONSUMER_SECRET || "").trim(),
-    shortcode: String(process.env.MPESA_SHORTCODE || "").trim(),
-    stkShortcode:
-      String(process.env.MPESA_STK_SHORTCODE || "").trim() ||
-      String(process.env.MPESA_SHORTCODE || "").trim(),
-    b2cShortcode:
-      String(process.env.MPESA_B2C_SHORTCODE || "").trim() ||
-      String(process.env.MPESA_SHORTCODE || "").trim(),
-    b2bShortcode:
-      String(process.env.MPESA_B2B_SHORTCODE || "").trim() ||
-      String(process.env.MPESA_SHORTCODE || "").trim(),
-    passkey: String(process.env.MPESA_PASSKEY || "").trim(),
-    initiatorName: String(process.env.MPESA_INITIATOR_NAME || "").trim(),
+    consumerKey: readMpesaValue("CONSUMER_KEY"),
+    consumerSecret: readMpesaValue("CONSUMER_SECRET"),
+    shortcode: readMpesaValue("SHORTCODE"),
+    stkShortcode: readMpesaValue("STK_SHORTCODE") || readMpesaValue("SHORTCODE"),
+    b2cShortcode: readMpesaValue("B2C_SHORTCODE") || readMpesaValue("SHORTCODE"),
+    b2bShortcode: readMpesaValue("B2B_SHORTCODE") || readMpesaValue("SHORTCODE"),
+    passkey: readMpesaValue("PASSKEY"),
+    initiatorName: readMpesaValue("INITIATOR_NAME"),
     securityCredential,
 
     // Optional per-product overrides (some Daraja apps issue different initiators/credentials per API product).
     b2cInitiatorName:
-      String(process.env.MPESA_B2C_INITIATOR_NAME || "").trim() ||
-      String(process.env.MPESA_INITIATOR_NAME || "").trim(),
+      readMpesaValue("B2C_INITIATOR_NAME", { allowLegacyFallback: false }) || readMpesaValue("INITIATOR_NAME"),
     b2cSecurityCredential:
-      String(process.env.MPESA_B2C_SECURITY_CREDENTIAL || "").trim() ||
-      securityCredential,
+      readMpesaValue("B2C_SECURITY_CREDENTIAL", { allowLegacyFallback: false }) || securityCredential,
     b2bInitiatorName:
-      String(process.env.MPESA_B2B_INITIATOR_NAME || "").trim() ||
-      String(process.env.MPESA_INITIATOR_NAME || "").trim(),
+      readMpesaValue("B2B_INITIATOR_NAME", { allowLegacyFallback: false }) || readMpesaValue("INITIATOR_NAME"),
     b2bSecurityCredential:
-      String(process.env.MPESA_B2B_SECURITY_CREDENTIAL || "").trim() ||
-      securityCredential,
+      readMpesaValue("B2B_SECURITY_CREDENTIAL", { allowLegacyFallback: false }) || securityCredential,
 
     // Optional per-flow B2B overrides.
     b2bPaybillInitiatorName:
-      String(process.env.MPESA_B2B_PAYBILL_INITIATOR_NAME || "").trim() ||
-      String(process.env.MPESA_B2B_INITIATOR_NAME || "").trim() ||
-      String(process.env.MPESA_INITIATOR_NAME || "").trim(),
+      readMpesaValue("B2B_PAYBILL_INITIATOR_NAME", { allowLegacyFallback: false }) ||
+      readMpesaValue("B2B_INITIATOR_NAME", { allowLegacyFallback: false }) ||
+      readMpesaValue("INITIATOR_NAME"),
     b2bPaybillSecurityCredential:
-      String(process.env.MPESA_B2B_PAYBILL_SECURITY_CREDENTIAL || "").trim() ||
-      String(process.env.MPESA_B2B_SECURITY_CREDENTIAL || "").trim() ||
+      readMpesaValue("B2B_PAYBILL_SECURITY_CREDENTIAL", { allowLegacyFallback: false }) ||
+      readMpesaValue("B2B_SECURITY_CREDENTIAL", { allowLegacyFallback: false }) ||
       securityCredential,
     b2bBuygoodsInitiatorName:
-      String(process.env.MPESA_B2B_BUYGOODS_INITIATOR_NAME || "").trim() ||
-      String(process.env.MPESA_B2B_INITIATOR_NAME || "").trim() ||
-      String(process.env.MPESA_INITIATOR_NAME || "").trim(),
+      readMpesaValue("B2B_BUYGOODS_INITIATOR_NAME", { allowLegacyFallback: false }) ||
+      readMpesaValue("B2B_INITIATOR_NAME", { allowLegacyFallback: false }) ||
+      readMpesaValue("INITIATOR_NAME"),
     b2bBuygoodsSecurityCredential:
-      String(process.env.MPESA_B2B_BUYGOODS_SECURITY_CREDENTIAL || "").trim() ||
-      String(process.env.MPESA_B2B_SECURITY_CREDENTIAL || "").trim() ||
+      readMpesaValue("B2B_BUYGOODS_SECURITY_CREDENTIAL", { allowLegacyFallback: false }) ||
+      readMpesaValue("B2B_SECURITY_CREDENTIAL", { allowLegacyFallback: false }) ||
       securityCredential,
 
     // Optional Requester for B2B payloads (commonly used in sandbox samples).
-    b2bRequester: String(process.env.MPESA_B2B_REQUESTER || "").trim(),
+    b2bRequester: readMpesaValue("B2B_REQUESTER", { allowLegacyFallback: false }),
   },
   commands: {
-    b2cOfframp: String(process.env.MPESA_B2C_COMMAND_ID || "BusinessPayment").trim(),
-    b2bPaybill: String(process.env.MPESA_B2B_PAYBILL_COMMAND_ID || "BusinessPayBill").trim(),
-    b2bBuygoods: String(process.env.MPESA_B2B_BUYGOODS_COMMAND_ID || "BusinessBuyGoods").trim(),
+    b2cOfframp: String(readMpesaValue("B2C_COMMAND_ID", { allowLegacyFallback: false }) || "BusinessPayment").trim(),
+    b2bPaybill: String(readMpesaValue("B2B_PAYBILL_COMMAND_ID", { allowLegacyFallback: false }) || "BusinessPayBill").trim(),
+    b2bBuygoods: String(readMpesaValue("B2B_BUYGOODS_COMMAND_ID", { allowLegacyFallback: false }) || "BusinessBuyGoods").trim(),
     b2bBuygoodsReceiverIdentifierType: String(
-      process.env.MPESA_B2B_BUYGOODS_RECEIVER_IDENTIFIER_TYPE || "2"
+      readMpesaValue("B2B_BUYGOODS_RECEIVER_IDENTIFIER_TYPE", { allowLegacyFallback: false }) || "2"
     ).trim(),
   },
   callbacks: {
@@ -182,11 +209,16 @@ const mpesaConfig = {
 
 function ensureMpesaConfigured() {
   const missing = [];
-  if (!mpesaConfig.credentials.consumerKey) missing.push("MPESA_CONSUMER_KEY");
-  if (!mpesaConfig.credentials.consumerSecret) missing.push("MPESA_CONSUMER_SECRET");
-  if (!mpesaConfig.credentials.stkShortcode) missing.push("MPESA_STK_SHORTCODE or MPESA_SHORTCODE");
-  if (!mpesaConfig.credentials.b2cShortcode) missing.push("MPESA_B2C_SHORTCODE or MPESA_SHORTCODE");
-  if (!mpesaConfig.credentials.b2bShortcode) missing.push("MPESA_B2B_SHORTCODE or MPESA_SHORTCODE");
+  if (!mpesaConfig.credentials.consumerKey)
+    missing.push("MPESA_CONSUMER_KEY (or MPESA_PROD_CONSUMER_KEY when MPESA_ENV=production)");
+  if (!mpesaConfig.credentials.consumerSecret)
+    missing.push("MPESA_CONSUMER_SECRET (or MPESA_PROD_CONSUMER_SECRET when MPESA_ENV=production)");
+  if (!mpesaConfig.credentials.stkShortcode)
+    missing.push("MPESA_STK_SHORTCODE/MPESA_SHORTCODE (or MPESA_PROD_STK_SHORTCODE/MPESA_PROD_SHORTCODE)");
+  if (!mpesaConfig.credentials.b2cShortcode)
+    missing.push("MPESA_B2C_SHORTCODE/MPESA_SHORTCODE (or MPESA_PROD_B2C_SHORTCODE/MPESA_PROD_SHORTCODE)");
+  if (!mpesaConfig.credentials.b2bShortcode)
+    missing.push("MPESA_B2B_SHORTCODE/MPESA_SHORTCODE (or MPESA_PROD_B2B_SHORTCODE/MPESA_PROD_SHORTCODE)");
   if (!mpesaConfig.callbacks.resultBaseUrl) missing.push("MPESA_RESULT_BASE_URL");
   if (!mpesaConfig.callbacks.timeoutBaseUrl) missing.push("MPESA_TIMEOUT_BASE_URL");
   if (mpesaConfig.settlement?.requireOnchainFunding) {
@@ -195,6 +227,25 @@ function ensureMpesaConfigured() {
     if (!mpesaConfig.treasury?.address) {
       missing.push("TREASURY_PLATFORM_ADDRESS (or TREASURY_PRIVATE_KEY)");
     }
+  }
+
+  const invalidSecurityCredentials = [];
+  const securityCandidates = [
+    ["MPESA_SECURITY_CREDENTIAL", mpesaConfig.credentials.securityCredential],
+    ["MPESA_B2C_SECURITY_CREDENTIAL", mpesaConfig.credentials.b2cSecurityCredential],
+    ["MPESA_B2B_SECURITY_CREDENTIAL", mpesaConfig.credentials.b2bSecurityCredential],
+  ];
+
+  for (const [name, value] of securityCandidates) {
+    const raw = String(value || "").trim();
+    if (!raw) continue;
+    if (!looksLikeRsaSecurityCredential(raw)) {
+      const decodedLength = decodedBase64ByteLength(raw);
+      invalidSecurityCredentials.push(`${name} (decoded bytes: ${decodedLength})`);
+    }
+  }
+  if (invalidSecurityCredentials.length > 0) {
+    missing.push(`Invalid security credential format: ${invalidSecurityCredentials.join(", ")}`);
   }
 
   if (missing.length > 0) {

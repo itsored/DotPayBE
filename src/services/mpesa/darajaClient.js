@@ -95,6 +95,9 @@ async function initiateB2C({
   const payload = {
     OriginatorConversationID: originatorConversationId,
     InitiatorName: initiatorName,
+    // Some Daraja profiles expect `Initiator` while others expect `InitiatorName`.
+    // Sending both is backward compatible and avoids profile-specific field drift.
+    Initiator: initiatorName,
     SecurityCredential: securityCredential,
     CommandID: commandId,
     Amount: Math.max(1, Math.round(Number(amountKes))),
@@ -103,6 +106,7 @@ async function initiateB2C({
     Remarks: remarks || "DotPay payout",
     QueueTimeOutURL: timeoutUrl,
     ResultURL: resultUrl,
+    Occasion: occasion || "DotPay",
     Occassion: occasion || "DotPay",
   };
 

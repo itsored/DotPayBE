@@ -780,6 +780,16 @@ router.post("/offramp/initiate", requireIdempotencyKey, async (req, res) => {
       originatorConversationId: darajaRes.data?.OriginatorConversationID || tx.transactionId,
       rawRequest: {
         endpoint: "b2c",
+        b2cEndpoint: mpesaConfig.endpoints?.b2cPayment || null,
+        commandId: mpesaConfig.commands?.b2cOfframp || "BusinessPayment",
+        initiatorName:
+          mpesaConfig.credentials?.b2cInitiatorName ||
+          mpesaConfig.credentials?.initiatorName ||
+          null,
+        shortcode:
+          mpesaConfig.credentials?.b2cShortcode ||
+          mpesaConfig.credentials?.shortcode ||
+          null,
         resultUrl,
         timeoutUrl,
       },
